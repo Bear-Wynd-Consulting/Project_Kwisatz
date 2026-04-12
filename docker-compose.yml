@@ -1,0 +1,88 @@
+version: "3.9"
+
+# =============================================================================
+# Project_Kwisatz — Ollama + API Gateway (CPU mode)
+#
+# Usage:
+#   docker compose up --build
+#
+# GPU mode (requires NVIDIA Container Toolkit):
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+#
+# First run will download the model — this can take several minutes.
+# =============================================================================
+
+networks:
+  # Ollama lives only on this network — never reachable from outside Docker
+  kwisatz-internal:
+    internal: true
+  # Gateway is reachable from the host on this network
+  kwisatz-public:
+
+volumes:
+  ollama-models:
+    # Persists the downloaded model across container rebuilds
+
+services:
+  # ---------------------------------------------------------------------------
+  ollama:
+    build:
+      context: ./ollama
+      dockerfile: Dockerfile
+    container_name: kwisatz-ollama
+    env_file: .env
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_NUM_PARALLEL=2
+    volumes:
+      - ollama-models:/root/.ollama
+    networks:
+      - kwisatz-internal
+    # NOT mapped to host ports — only reachable via kwisatz-internal
+    expose:
+      - "11434"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 20g
+    memswap_limit: 20g
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s  # Allow time for model pull on first start
+
+  # ---------------------------------------------------------------------------
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: kwisatz-gateway
+    env_file: .env
+    networks:
+      - kwisatz-internal
+      - kwisatz-public
+    ports:
+      - "${GATEWAY_PORT:-8000}:8000"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 512m
+    memswap_limit: 512m
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
