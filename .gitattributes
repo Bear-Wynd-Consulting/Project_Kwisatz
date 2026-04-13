@@ -1,0 +1,13 @@
+# Shell scripts must always use LF — CRLF breaks shebangs inside Linux containers
+*.sh    text eol=lf
+
+# Docker and config files
+Dockerfile      text eol=lf
+*.conf          text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+
+# Windows-native files can keep CRLF
+*.bat           text eol=crlf
+*.cmd           text eol=crlf
+*.ps1           text eol=crlf
